@@ -1,0 +1,17 @@
+{
+  "name": "easyjam",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Collaborative YouTube music streaming for LAN parties",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "puppeteer": "^25.1.0",
+    "uuid": "^10.0.0",
+    "ws": "^8.18.0"
+  }
+}
