@@ -1,9 +1,21 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+
+// Isoler les tests : ne jamais écrire dans le vrai queue.json
+const TEST_QUEUE_FILE = path.join(os.tmpdir(), 'easyjam-test-queue-' + process.pid + '.json');
+process.env.EASYJAM_QUEUE_FILE = TEST_QUEUE_FILE;
+
 const {
   createRoom, addToQueue, removeFromQueue, playTrack, pauseTrack, skipTrack,
   addUser, removeUser, voteSkip, resetVotes, getCurrentPosition, getFullState
 } = require('../server/state');
+
+process.on('exit', () => {
+  try { fs.unlinkSync(TEST_QUEUE_FILE); } catch {}
+});
 
 const trackData = {
   title: 'Test Song',

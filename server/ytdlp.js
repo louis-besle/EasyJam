@@ -2,16 +2,18 @@ const { execFileSync, execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 
+const DETECT_TIMEOUT = 15000;
+
 function findYtDlp() {
   if (process.env.YTDLP_PATH) return process.env.YTDLP_PATH;
   const candidates = ['yt-dlp', 'yt-dlp.exe', 'python', 'python3'];
   for (const cmd of candidates) {
     try {
       if (cmd === 'python' || cmd === 'python3') {
-        execFileSync(cmd, ['-m', 'yt_dlp', '--version'], { stdio: 'pipe', timeout: 5000 });
+        execFileSync(cmd, ['-m', 'yt_dlp', '--version'], { stdio: 'pipe', timeout: DETECT_TIMEOUT });
         return cmd;
       } else {
-        execFileSync(cmd, ['--version'], { stdio: 'pipe', timeout: 5000 });
+        execFileSync(cmd, ['--version'], { stdio: 'pipe', timeout: DETECT_TIMEOUT });
         return cmd;
       }
     } catch {}

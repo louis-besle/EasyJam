@@ -7,10 +7,8 @@ const {
 } = require('./state');
 const { resolveYoutubeUrl, searchYoutube } = require('./ytdlp');
 const { startTimer, stopTimer } = require('./timer');
-const { createTournament, voteMatch, advanceRound, getTournamentState, getCurrentMatch, isTournamentOver } = require('./tournament');
 
 let syncInterval = null;
-let tTimer = null;
 
 function createWSServer(server) {
   return new WebSocketServer({ server });
@@ -175,119 +173,6 @@ function setupWebSocket(wss, room) {
           break;
         }
 
-        case 'tournament_add_to_pool': {
-          if (room.tournamentPool.length >= 16) {
-            send(ws, { type: 'error', message: 'Tournament pool is full (16 max)' });
-            break;
-          }
-          try {
-            const resolved = await resolveYoutubeUrl(msg.url);
-            const user = room.users[socketId];
-            const track = {
-              id: uuidv4(),
-              ...resolved,
-              addedBy: user ? user.name : 'Unknown',
-              addedAt: Date.now()
-            };
-            room.tournamentPool.push(track);
-            send(ws, { type: 'tournament_pool_added', track: toClientTrack(track) });
-            broadcast(wss, { type: 'tournament_pool_updated', pool: room.tournamentPool.map(toClientTrack) });
-          } catch (err) {
-            send(ws, { type: 'error', message: err.message || 'Failed to resolve URL' });
-          }
-          break;
-        }
-
-        case 'tournament_remove_from_pool': {
-          const index = room.tournamentPool.findIndex(t => t.id === msg.trackId);
-          if (index === -1) {
-            send(ws, { type: 'error', message: 'Track not found in pool' });
-            break;
-          }
-          const track = room.tournamentPool[index];
-          const user = room.users[socketId];
-          if (track.addedBy === (user ? user.name : null) || isAdmin(room, socketId)) {
-            room.tournamentPool.splice(index, 1);
-            broadcast(wss, { type: 'tournament_pool_updated', pool: room.tournamentPool.map(toClientTrack) });
-          } else {
-            send(ws, { type: 'error', message: 'You can only remove your own tracks' });
-          }
-          break;
-        }
-
-        case 'tournament_start': {
-          if (!isAdmin(room, socketId)) {
-            send(ws, { type: 'error', message: 'Only admin can start tournament' });
-            break;
-          }
-          console.log('[tournament] started by ' + (room.users[socketId]?.name || '?') + ' (size ' + (msg.size || 16) + ')');
-          const size = msg.size || 16;
-          const tracks = room.tournamentPool.splice(0, size);
-          stopTournamentTimer();
-          room.tournament = createTournament(tracks, size);
-          room.tournament.status = 'playing_A';
-          const firstMatch = getCurrentMatch(room.tournament);
-          broadcast(wss, { type: 'tournament_state', state: getTournamentState(room.tournament) });
-          broadcast(wss, {
-            type: 'tournament_matchup',
-            matchId: firstMatch.id,
-            round: 0,
-            matchIndex: 0,
-            trackA: toClientTrack(firstMatch.trackA),
-            trackB: toClientTrack(firstMatch.trackB)
-          });
-          tTimer = setTimeout(() => {
-            broadcast(wss, { type: 'tournament_play', trackId: 'a', position: 0 });
-            tTimer = setTimeout(() => {
-              room.tournament.status = 'playing_B';
-              broadcast(wss, { type: 'tournament_state', state: getTournamentState(room.tournament) });
-              broadcast(wss, { type: 'tournament_play', trackId: 'b', position: 0 });
-              tTimer = setTimeout(() => {
-                room.tournament.status = 'voting';
-                broadcast(wss, { type: 'tournament_state', state: getTournamentState(room.tournament) });
-                broadcast(wss, { type: 'tournament_vote_open', matchId: firstMatch.id });
-                tTimer = setTimeout(() => {
-                  _finalizeMatch(room, wss, firstMatch);
-                  tTimer = null;
-                }, 15000);
-              }, 15000);
-            }, 15000);
-          }, 1000);
-          break;
-        }
-
-        case 'tournament_vote': {
-          if (!room.tournament || room.tournament.status !== 'voting') {
-            send(ws, { type: 'error', message: 'Voting is not open' });
-            break;
-          }
-          const match = getCurrentMatch(room.tournament);
-          if (!match || match.winnerId) break;
-          const result = voteMatch(room, msg.matchId || match.id, socketId, msg.trackVoted);
-          if (!result) break;
-          const votesA = Object.values(match.votes).filter(v => v === 'a').length;
-          const votesB = Object.values(match.votes).filter(v => v === 'b').length;
-          broadcast(wss, {
-            type: 'tournament_vote_update',
-            matchId: result.match.id,
-            votesA,
-            votesB,
-            total: Object.keys(room.users).length
-          });
-          if (result.allVoted) {
-            stopTournamentTimer();
-            _showResults(room, wss, result.match, result.votesA, result.votesB);
-          }
-          break;
-        }
-
-        case 'tournament_leave': {
-          stopTournamentTimer();
-          room.tournament = null;
-          broadcast(wss, { type: 'tournament_left' });
-          broadcast(wss, { type: 'tournament_state', state: null });
-          break;
-        }
       }
     });
 
@@ -328,6 +213,7 @@ function performSkip(room, wss) {
   } else {
     broadcast(wss, { type: 'queue_updated', queue: [] });
   }
+  broadcastVotes(wss, room);
 }
 
 function playAndBroadcast(room, wss, position) {
@@ -338,94 +224,10 @@ function playAndBroadcast(room, wss, position) {
   startTimer(room, () => autoSkip(room, wss));
   broadcast(wss, { type: 'play', track: toClientTrack(track), position });
   broadcast(wss, { type: 'queue_updated', queue: room.queue.map(toClientTrack) });
+  broadcastVotes(wss, room);
 }
 
 function autoSkip(room, wss) { performSkip(room, wss); }
-
-function stopTournamentTimer() {
-  if (tTimer !== null) {
-    clearTimeout(tTimer);
-    tTimer = null;
-  }
-}
-
-function _showResults(room, wss, match, votesA, votesB) {
-  const tour = room.tournament;
-  tour.status = 'results';
-  broadcast(wss, {
-    type: 'tournament_match_result',
-    matchId: match.id,
-    winnerId: match.winnerId,
-    votesA,
-    votesB
-  });
-  broadcast(wss, { type: 'tournament_state', state: getTournamentState(tour) });
-  stopTournamentTimer();
-  tTimer = setTimeout(() => _advanceTournament(room, wss), 5000);
-}
-
-function _finalizeMatch(room, wss, match) {
-  if (match.winnerId) return;
-  const votesA = Object.values(match.votes).filter(v => v === 'a').length;
-  const votesB = Object.values(match.votes).filter(v => v === 'b').length;
-  match.winnerId = votesA >= votesB ? 'a' : 'b';
-  _showResults(room, wss, match, votesA, votesB);
-}
-
-function _advanceTournament(room, wss) {
-  const tour = room.tournament;
-  if (!tour) return;
-  const currentRound = tour.currentRound;
-  const roundMatches = tour.rounds[currentRound];
-  const allDone = roundMatches.every(m => m.winnerId !== null);
-  if (!allDone) {
-    tour.currentMatchIndex++;
-    const nextMatch = getCurrentMatch(tour);
-    if (nextMatch) _startMatchFlow(room, wss, nextMatch);
-    return;
-  }
-  advanceRound(tour);
-  if (tour.status === 'finished') {
-    broadcast(wss, { type: 'tournament_finished', champion: toClientTrack(tour.champion) });
-    broadcast(wss, { type: 'tournament_state', state: getTournamentState(tour) });
-    return;
-  }
-  broadcast(wss, { type: 'tournament_round_done', round: currentRound });
-  broadcast(wss, { type: 'tournament_state', state: getTournamentState(tour) });
-  const nextMatch = getCurrentMatch(tour);
-  if (nextMatch) _startMatchFlow(room, wss, nextMatch);
-}
-
-function _startMatchFlow(room, wss, match) {
-  const tour = room.tournament;
-  tour.status = 'playing_A';
-  broadcast(wss, { type: 'tournament_state', state: getTournamentState(tour) });
-  broadcast(wss, {
-    type: 'tournament_matchup',
-    matchId: match.id,
-    round: tour.currentRound,
-    matchIndex: tour.currentMatchIndex,
-    trackA: toClientTrack(match.trackA),
-    trackB: toClientTrack(match.trackB)
-  });
-  tTimer = setTimeout(() => {
-    broadcast(wss, { type: 'tournament_play', trackId: 'a', position: 0 });
-    tTimer = setTimeout(() => {
-      tour.status = 'playing_B';
-      broadcast(wss, { type: 'tournament_state', state: getTournamentState(tour) });
-      broadcast(wss, { type: 'tournament_play', trackId: 'b', position: 0 });
-      tTimer = setTimeout(() => {
-        tour.status = 'voting';
-        broadcast(wss, { type: 'tournament_state', state: getTournamentState(tour) });
-        broadcast(wss, { type: 'tournament_vote_open', matchId: match.id });
-        tTimer = setTimeout(() => {
-          _finalizeMatch(room, wss, match);
-          tTimer = null;
-        }, 15000);
-      }, 15000);
-    }, 15000);
-  }, 1000);
-}
 
 function sendFullState(ws, room) {
   const state = getFullState(room);
@@ -439,14 +241,12 @@ function sendFullState(ws, room) {
     users: getUsersArray(room),
     chatHistory: state.chatHistory.map(m => ({ ...m })),
     history: state.history.map(t => ({ ...t })),
-    tournamentPool: room.tournamentPool.map(toClientTrack),
     votes: {
       count: Object.keys(state.votesSkip).length,
       threshold: Math.ceil(
         Object.values(state.users).filter(u => !u.isAdmin).length * state.skipThreshold
       )
-    },
-    tournament: room.tournament ? getTournamentState(room.tournament) : null
+    }
   };
   send(ws, msg);
 }

@@ -13,7 +13,23 @@
   let myName = '';
   let searchPending = false;
   let searchTimer = null;
-  let currentView = 'jam';
+  let lastQueue = [];
+  let history = [];
+
+  function rememberPlayed(track) {
+    if (!track || !track.id) return;
+    const key = track.youtubeId || track.id;
+    history = [track].concat(history.filter(function (t) {
+      return (t.youtubeId || t.id) !== key;
+    })).slice(0, 50);
+  }
+
+  function renderHistory() {
+    const visible = history.filter(function (t) {
+      return !currentTrack || (t.youtubeId || t.id) !== (currentTrack.youtubeId || currentTrack.id);
+    });
+    UI.renderHistory(visible);
+  }
 
   function getWebSocketUrl() {
     const loc = window.location;
@@ -29,12 +45,13 @@
 
   function connect(name) {
     myName = name || 'Anonymous';
+    UI.myName = myName;
     localStorage.setItem('easyjam_name', myName);
 
     socket = new WebSocket(getWebSocketUrl());
 
     socket.addEventListener('open', function () {
-      document.querySelector('.user-count-dot').style.background = '#22c55e';
+      UI.setConnection(true);
       socket.send(JSON.stringify({ type: 'join', name: myName }));
     });
 
@@ -45,7 +62,7 @@
     });
 
     socket.addEventListener('close', function () {
-      document.querySelector('.user-count-dot').style.background = '#ef4444';
+      UI.setConnection(false);
       scheduleReconnect();
     });
 
@@ -70,9 +87,6 @@
       case 'welcome':
         mySocketId = msg.socketId;
         isAdmin = !!msg.isAdmin;
-        window.__isAdmin = isAdmin;
-        document.getElementById('viewNav').style.display = 'flex';
-        document.getElementById('tournamentStartBtn').classList.toggle('hidden', !isAdmin);
         break;
 
       case 'state':
@@ -80,17 +94,18 @@
         if (msg.isAdmin !== undefined) isAdmin = msg.isAdmin;
         currentTrack = msg.currentTrack || null;
         isPlaying = msg.isPlaying || false;
+        lastQueue = msg.queue || [];
+        history = msg.history || [];
 
         UI.renderPlayer(currentTrack, isPlaying, isAdmin);
-        UI.renderQueue(msg.queue || [], currentTrack, isAdmin);
+        UI.renderQueue(lastQueue, currentTrack, isAdmin);
         UI.renderUsers(msg.users || [], mySocketId);
         UI.renderChatHistory(msg.chatHistory || []);
+        renderHistory();
 
         if (msg.votes) {
           UI.renderVotes(msg.votes.count, msg.votes.threshold, (msg.users || []).length, isAdmin);
         }
-
-        if (msg.tournamentPool) Tournament.updatePool(msg.tournamentPool);
 
         if (currentTrack && player) {
           const url = currentTrack.url || currentTrack.streamUrl;
@@ -111,6 +126,7 @@
 
       case 'play':
         if (msg.track) {
+          if (currentTrack && currentTrack.id !== msg.track.id) rememberPlayed(currentTrack);
           currentTrack = msg.track;
           var url = msg.track.url || msg.track.streamUrl;
           if (url && player) player.setSource(url);
@@ -123,6 +139,7 @@
         }
         isPlaying = true;
         UI.renderPlayer(currentTrack, true, isAdmin);
+        renderHistory();
         if (player && !player.isPaused()) UI.startProgressUpdates(player);
         UI.setPlayButtonState(true);
         break;
@@ -131,14 +148,18 @@
         isPlaying = false;
         if (player) player.pauseAt(msg.position);
         UI.stopProgressUpdates();
+        UI.renderPlayer(currentTrack, false, isAdmin);
         UI.setPlayButtonState(false);
         break;
 
       case 'skip':
+        if (msg.prevTrack) rememberPlayed(msg.prevTrack);
         currentTrack = msg.nextTrack || null;
         isPlaying = !!msg.nextTrack;
         hasVoted = false;
         UI.resetVoteButton();
+        if (msg.queue) lastQueue = msg.queue;
+        renderHistory();
 
         if (msg.nextTrack && player) {
           var url = msg.nextTrack.url || msg.nextTrack.streamUrl;
@@ -160,7 +181,7 @@
         UI.setPlayButtonState(isPlaying);
 
         if (msg.queue) {
-          UI.renderQueue(msg.queue, currentTrack, isAdmin);
+          UI.renderQueue(lastQueue, currentTrack, isAdmin);
         }
         break;
 
@@ -171,7 +192,8 @@
         break;
 
       case 'queue_updated':
-        UI.renderQueue(msg.queue || [], currentTrack, isAdmin);
+        lastQueue = msg.queue || [];
+        UI.renderQueue(lastQueue, currentTrack, isAdmin);
         break;
 
       case 'votes_updated':
@@ -181,10 +203,9 @@
       case 'admin_changed':
         if (msg.socketId === mySocketId) {
           isAdmin = msg.isAdmin;
-          window.__isAdmin = isAdmin;
-          document.getElementById('tournamentStartBtn').classList.toggle('hidden', !isAdmin);
           UI.showToast(isAdmin ? 'You are now the admin' : 'You are no longer admin');
           UI.renderPlayer(currentTrack, isPlaying, isAdmin);
+          UI.renderQueue(lastQueue, currentTrack, isAdmin);
         }
         break;
 
@@ -208,15 +229,12 @@
 
       case 'search_results':
         searchPending = false;
-        if (currentView === 'tournament') {
-          Tournament.onSearchResults(msg.results || []);
-        } else {
-          UI.renderSearchResults(msg.results || []);
-        }
+        UI.renderSearchResults(msg.results || []);
         break;
 
       case 'rename_ok':
         myName = msg.name;
+        UI.myName = myName;
         localStorage.setItem('easyjam_name', myName);
         UI.showToast('Name updated to ' + myName);
         break;
@@ -231,60 +249,6 @@
 
       case 'error':
         UI.showToast(msg.message || 'An error occurred', true);
-        break;
-
-      // ── Tournament ──
-      case 'tournament_state':
-        Tournament.updateState(msg.state);
-        Tournament.updateState = Tournament.updateState; // ensure bound
-        break;
-
-      case 'tournament_matchup':
-        Tournament.showMatchup(msg.match || { trackA: msg.trackA, trackB: msg.trackB, id: msg.matchId }, msg.round || 0, msg.matchIndex || 0);
-        break;
-
-      case 'tournament_play':
-        Tournament.setPlaying(msg.trackId);
-        if (player) {
-          var t = Tournament.getCurrentTrack(msg.trackId);
-          if (t) {
-            var url = t.url || t.streamUrl;
-            if (url) player.setSource(url);
-            player.playFrom(0);
-          }
-        }
-        break;
-
-      case 'tournament_vote_open':
-        Tournament.setVoting();
-        break;
-
-      case 'tournament_vote_update':
-        Tournament.updateVotes(msg.votesA || 0, msg.votesB || 0, msg.total || 0);
-        break;
-
-      case 'tournament_match_result':
-        Tournament.showMatchResult(msg.winnerId);
-        break;
-
-      case 'tournament_round_done':
-        UI.showToast('Round ' + (msg.round + 1) + ' complete');
-        break;
-
-      case 'tournament_finished':
-        Tournament.showChampion(msg.champion);
-        UI.showToast('Tournament finished!');
-        break;
-
-      case 'tournament_pool_updated':
-        Tournament.updatePool(msg.pool || []);
-        break;
-
-      case 'tournament_pool_added':
-        break;
-
-      case 'tournament_left':
-        Tournament.reset();
         break;
     }
   }
@@ -314,6 +278,13 @@
       connect(storedName);
     } else {
       nameInput.placeholder = generateName();
+      var joinPresence = document.getElementById('joinPresence');
+      nameInput.addEventListener('input', function () {
+        var value = nameInput.value.trim();
+        joinPresence.textContent = value
+          ? 'Joining as ' + value + '.'
+          : 'No account needed — jump straight in.';
+      });
       nameJoinBtn.addEventListener('click', function () {
         var n = nameInput.value.trim() || generateName();
         nameOverlay.classList.add('hidden');
@@ -322,12 +293,11 @@
       nameInput.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') nameJoinBtn.click();
       });
+      setTimeout(function () { nameInput.focus(); }, 60);
     }
 
     const playBtn = document.getElementById('playBtn');
     const nextBtn = document.getElementById('nextBtn');
-    const addInput = document.getElementById('addInput');
-    const addBtn = document.getElementById('addBtn');
     const voteBtn = document.getElementById('voteBtn');
     const progressBar = document.getElementById('progressBar');
 
@@ -445,58 +415,67 @@
       return /^https?:\/\//.test(text) || /youtube\.com|youtu\.be/.test(text);
     }
 
-    addBtn.addEventListener('click', function () {
-      const text = addInput.value.trim();
-      if (!text) return;
-      if (isUrl(text)) {
-        send({ type: 'add_to_queue', url: text });
-        addInput.value = '';
-        UI.hideSearchResults();
-      } else {
-        triggerSearch(text);
-      }
-    });
-
-    addInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        const text = addInput.value.trim();
-        if (!text) return;
-        if (isUrl(text)) {
-          send({ type: 'add_to_queue', url: text });
-          addInput.value = '';
-          UI.hideSearchResults();
-        } else {
-          triggerSearch(text);
-        }
-      }
-    });
-
-    addInput.addEventListener('input', function () {
-      const text = addInput.value.trim();
-      if (!text || isUrl(text) || text.length < 2 || searchPending) {
-        if (!text || isUrl(text)) UI.hideSearchResults();
-        return;
-      }
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(function () {
-        triggerSearch(text);
-      }, 500);
-    });
-
     function triggerSearch(query) {
       searchPending = true;
       UI.showSearchLoading();
       send({ type: 'search', query: query });
     }
 
-    document.getElementById('searchResults').addEventListener('click', function (e) {
+    function setupSearch(input, resultsEl) {
+      if (!input || !resultsEl) return;
+
+      input.addEventListener('focus', function () {
+        UI.setSearchTarget(resultsEl);
+      });
+
+      input.addEventListener('input', function () {
+        UI.setSearchTarget(resultsEl);
+        const text = input.value.trim();
+        clearTimeout(searchTimer);
+
+        if (!text || isUrl(text)) {
+          UI.hideSearchResults();
+          searchPending = false;
+          return;
+        }
+
+        if (text.length < 2) return;
+
+        searchTimer = setTimeout(function () {
+          triggerSearch(text);
+        }, 500);
+      });
+
+      input.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        UI.setSearchTarget(resultsEl);
+        const text = input.value.trim();
+        if (!text) return;
+
+        if (isUrl(text)) {
+          send({ type: 'add_to_queue', url: text });
+          input.value = '';
+          UI.hideSearchResults();
+        } else {
+          triggerSearch(text);
+        }
+      });
+    }
+
+    const headerSearchInput = document.getElementById('headerSearchInput');
+    const headerSearchResults = document.getElementById('headerSearchResults');
+    setupSearch(headerSearchInput, headerSearchResults);
+
+    function handleSearchResultClick(e) {
       const item = e.target.closest('.search-result-item');
       if (!item) return;
       const url = 'https://www.youtube.com/watch?v=' + item.getAttribute('data-id');
       send({ type: 'add_to_queue', url: url });
-      addInput.value = '';
+      headerSearchInput.value = '';
       UI.hideSearchResults();
-    });
+    }
+
+    headerSearchResults.addEventListener('click', handleSearchResultClick);
 
     voteBtn.addEventListener('click', function () {
       if (voteBtn.disabled || hasVoted) return;
@@ -519,6 +498,90 @@
       const btn = e.target.closest('[data-action="remove"]');
       if (btn) {
         send({ type: 'remove_from_queue', trackId: btn.getAttribute('data-id') });
+      }
+    });
+
+    document.getElementById('clearQueueBtn').addEventListener('click', function () {
+      lastQueue.forEach(function (track) {
+        send({ type: 'remove_from_queue', trackId: track.id });
+      });
+    });
+
+    document.getElementById('nextCard').addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-action="next"]');
+      if (btn) send({ type: 'control', action: 'skip' });
+    });
+
+    function focusSearch() {
+      headerSearchInput.focus();
+      headerSearchInput.select();
+    }
+
+    document.getElementById('addFromYt').addEventListener('click', focusSearch);
+
+    function requeueHistoryRow(row) {
+      if (!row) return;
+      const youtubeId = row.getAttribute('data-youtube-id');
+      if (!youtubeId) return;
+      const titleEl = row.querySelector('.history-title');
+      const title = titleEl ? titleEl.textContent : 'Track';
+      UI.showToast('Adding "' + title + '" back to the queue…');
+      send({ type: 'add_to_queue', url: 'https://www.youtube.com/watch?v=' + youtubeId });
+    }
+
+    const historyList = document.getElementById('historyList');
+
+    historyList.addEventListener('click', function (e) {
+      const row = e.target.closest('[data-action="requeue"]');
+      if (row) requeueHistoryRow(row);
+    });
+
+    historyList.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const row = e.target.closest('[data-action="requeue"]');
+      if (!row) return;
+      e.preventDefault();
+      requeueHistoryRow(row);
+    });
+
+    // Header user menu
+    const meBtn = document.getElementById('meBtn');
+    const meMenu = document.getElementById('meMenu');
+
+    function closeMeMenu() {
+      meMenu.classList.add('hidden');
+      meBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    meBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      const isOpen = !meMenu.classList.toggle('hidden');
+      meBtn.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!meMenu.contains(e.target) && !meBtn.contains(e.target)) closeMeMenu();
+    });
+
+    meMenu.addEventListener('click', function (e) {
+      const item = e.target.closest('[data-action]');
+      if (!item) return;
+      const action = item.getAttribute('data-action');
+      closeMeMenu();
+
+      if (action === 'leave') {
+        localStorage.removeItem('easyjam_name');
+        window.location.reload();
+        return;
+      }
+
+      if (action === 'rename') {
+        const badge = document.querySelector('.user-badge.is-self');
+        if (!badge) return;
+        badge.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        UI.startRename(mySocketId, UI.myName || myName, function (newName) {
+          send({ type: 'rename', name: newName });
+        });
       }
     });
 
@@ -549,30 +612,6 @@
     chatInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') sendChat();
     });
-
-    // ── View toggle (Jam / Tournament) ──
-
-    document.querySelectorAll('.view-nav-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var view = btn.getAttribute('data-view');
-        if (view === currentView) return;
-        currentView = view;
-        document.querySelectorAll('.view-nav-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-view') === view); });
-        if (view === 'tournament') {
-          Tournament.show();
-        } else {
-          Tournament.hide();
-        }
-      });
-    });
-
-    // ── Tournament module ──
-    Tournament.init(
-      function onStart(size) { send({ type: 'tournament_start', size: size }); },
-      function onVote(matchId, trackVoted) { send({ type: 'tournament_vote', matchId: matchId, trackVoted: trackVoted }); },
-      function onLeave() { send({ type: 'tournament_leave' }); },
-      function(data) { send(data); }
-    );
 
     UI.updateProgress(0, 0);
   }

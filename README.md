@@ -1,6 +1,6 @@
 # EasyJam
 
-Streaming musical collaboratif en temps réel pour LAN parties. ~10 utilisateurs, une file d'attente commune, un chat, et des tournois de musique.
+Streaming musical collaboratif en temps réel pour LAN parties. ~10 utilisateurs, une file d'attente commune et un chat.
 
 ## Prérequis
 
@@ -10,6 +10,8 @@ Streaming musical collaboratif en temps réel pour LAN parties. ~10 utilisateurs
 ```powershell
 pip install yt-dlp
 ```
+
+> **Important** : garde yt-dlp à jour (`python -m pip install -U yt-dlp`). Une version ancienne produit des URLs YouTube que le navigateur ne peut pas lire (lecture bloquée à 0:00).
 
 ## Installation
 
@@ -47,7 +49,6 @@ Les autres ouvrent `http://<IP>:3215` (ex: `http://192.168.1.42:3215`).
 | **Chat** | Limité à 25 messages, persisté le temps de la session |
 | **Pseudo** | Choix à la première connexion, éditable dans la barre en bas |
 | **Volume individuel** | Chaque utilisateur règle son propre volume, sauvegardé |
-| **Tournoi de musique** | Bracket 16 morceaux : extrait 15s → vote → vainqueur → round suivant |
 
 ## Commandes
 
@@ -73,15 +74,13 @@ EasyJam/
 │   ├── state.js        — État de la room (file, lecture, votes, etc.)
 │   ├── ws-handler.js   — Routage des messages WebSocket
 │   ├── ytdlp.js        — Wrapper yt-dlp (résolution URL + recherche)
-│   ├── tournament.js   — Machine à états du tournoi
 │   └── timer.js        — Timer pour auto-skip
 ├── public/
 │   ├── index.html      — SPA
-│   ├── style.css       — ~1500 lignes, thème dark, accent coral
+│   ├── style.css       — Design system (tokens sémantiques, échelle 4px)
 │   ├── app.js          — Client WebSocket + orchestration
 │   ├── player.js       — Wrapper HTML5 Audio (synchro, autoplay recovery)
-│   ├── ui.js           — Fonctions de rendu DOM
-│   └── tournament.js   — Client tournoi (bracket, votes, matchs)
+│   └── ui.js           — Fonctions de rendu DOM
 ├── test/
 │   └── state.test.js   — Tests unitaires (Node test runner)
 │   └── ytdlp.test.js

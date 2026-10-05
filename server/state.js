@@ -2,7 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
 
-const QUEUE_FILE = path.join(__dirname, '..', 'queue.json');
+const QUEUE_FILE = process.env.EASYJAM_QUEUE_FILE || path.join(__dirname, '..', 'queue.json');
 
 function createRoom() {
   return {
@@ -14,8 +14,6 @@ function createRoom() {
     skipThreshold: 0.5,
     chatHistory: [],
     MAX_CHAT: 25,
-    tournament: null,
-    tournamentPool: [],
     history: [],
     MAX_HISTORY: 50
   };
