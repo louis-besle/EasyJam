@@ -224,6 +224,11 @@ const UI = {
 
     queue = queue || [];
     count.textContent = queue.length;
+    const toggleBadge = document.getElementById('queueToggleCount');
+    if (toggleBadge) {
+      toggleBadge.textContent = queue.length;
+      toggleBadge.classList.toggle('hidden', queue.length === 0);
+    }
     clearBtn.classList.toggle('hidden', !(isAdmin && queue.length > 0));
 
     const totalSeconds = queue.reduce((sum, item) => sum + (item.duration || 0), 0);

@@ -512,7 +512,69 @@
       if (btn) send({ type: 'control', action: 'skip' });
     });
 
+    // ── Mobile drawers (queue / chat) ──
+    const queuePanel = document.getElementById('queueSection');
+    const chatPanel = document.getElementById('chatSection');
+    const queueToggle = document.getElementById('queueToggle');
+    const chatToggle = document.getElementById('chatToggle');
+    const drawerBackdrop = document.getElementById('drawerBackdrop');
+    let drawerTrigger = null;
+
+    function closeDrawer() {
+      queuePanel.classList.remove('is-open');
+      chatPanel.classList.remove('is-open');
+      drawerBackdrop.classList.remove('visible');
+      document.body.classList.remove('drawer-open');
+      queueToggle.setAttribute('aria-expanded', 'false');
+      chatToggle.setAttribute('aria-expanded', 'false');
+      if (drawerTrigger) {
+        drawerTrigger.focus({ preventScroll: true });
+        drawerTrigger = null;
+      }
+    }
+
+    function openDrawer(which) {
+      closeDrawer();
+      const panel = which === 'queue' ? queuePanel : chatPanel;
+      const trigger = which === 'queue' ? queueToggle : chatToggle;
+      drawerTrigger = trigger;
+      panel.classList.add('is-open');
+      drawerBackdrop.classList.add('visible');
+      document.body.classList.add('drawer-open');
+      trigger.setAttribute('aria-expanded', 'true');
+      const close = panel.querySelector('.drawer-close');
+      if (close) close.focus({ preventScroll: true });
+    }
+
+    queueToggle.addEventListener('click', function () {
+      if (queuePanel.classList.contains('is-open')) closeDrawer();
+      else openDrawer('queue');
+    });
+
+    chatToggle.addEventListener('click', function () {
+      if (chatPanel.classList.contains('is-open')) closeDrawer();
+      else openDrawer('chat');
+    });
+
+    drawerBackdrop.addEventListener('click', closeDrawer);
+
+    document.querySelectorAll('[data-close-drawer]').forEach(function (btn) {
+      btn.addEventListener('click', closeDrawer);
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeDrawer();
+    });
+
+    const mobileQuery = window.matchMedia('(max-width: 1180px)');
+    const onLayoutChange = function (e) {
+      if (!e.matches) closeDrawer();
+    };
+    if (mobileQuery.addEventListener) mobileQuery.addEventListener('change', onLayoutChange);
+    else if (mobileQuery.addListener) mobileQuery.addListener(onLayoutChange);
+
     function focusSearch() {
+      closeDrawer();
       headerSearchInput.focus();
       headerSearchInput.select();
     }

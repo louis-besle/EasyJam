@@ -572,6 +572,56 @@ ul {
   white-space: nowrap;
 }
 
+/* Mobile drawer toggles (queue / chat) */
+.mobile-actions {
+  display: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.action-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--field-border);
+  border-radius: 50%;
+  background: #161616;
+  color: var(--text-2);
+  transition: color var(--fast) ease, border-color var(--fast) ease,
+    background var(--fast) ease;
+}
+
+.action-btn:hover {
+  color: var(--text);
+  border-color: #3a3a3a;
+  background: #191919;
+}
+
+.action-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.action-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #1a1a1a;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
 .me {
   position: relative;
 }
@@ -682,6 +732,34 @@ ul {
   gap: 12px;
   padding: 22px 24px 0;
   flex: 0 0 auto;
+}
+
+.panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.drawer-close {
+  display: none;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.62);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--base) ease, visibility var(--base) ease;
+}
+
+.drawer-backdrop.visible {
+  opacity: 1;
+  visibility: visible;
 }
 
 .panel-title {
@@ -2198,6 +2276,101 @@ ul {
 }
 
 @media (max-width: 1180px) {
+  .mobile-actions {
+    display: flex;
+  }
+
+  .drawer-close {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--raised);
+    color: var(--text-2);
+    font-size: 18px;
+    line-height: 1;
+    transition: background var(--fast) ease, color var(--fast) ease;
+  }
+
+  .drawer-close:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: 'stage';
+    gap: 0;
+  }
+
+  .stage {
+    grid-area: stage;
+    width: 100%;
+    max-width: 676px;
+    min-height: 0;
+    justify-self: center;
+  }
+
+  .queue-panel,
+  .chat-panel {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    z-index: 90;
+    width: min(400px, 92vw);
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0 12px 12px 0;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.75);
+    transform: translateX(-102%);
+    visibility: hidden;
+    transition: transform 280ms var(--ease-out), visibility 280ms;
+  }
+
+  .queue-panel {
+    left: 0;
+  }
+
+  .chat-panel {
+    left: auto;
+    right: 0;
+    border-radius: 12px 0 0 12px;
+    transform: translateX(102%);
+  }
+
+  .queue-panel.is-open,
+  .chat-panel.is-open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .next-card {
+    max-width: 420px;
+  }
+
+  .queue-scroll {
+    max-height: none;
+  }
+
+  .chat-input-row {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  body.drawer-open {
+    overflow: hidden;
+  }
+
+  .users-bar {
+    gap: 24px;
+  }
+}
+
+@media (max-width: 1180px) and (max-height: 760px) {
   body {
     overflow: auto;
   }
@@ -2209,32 +2382,7 @@ ul {
   }
 
   .layout {
-    grid-template-columns: 320px minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) 400px;
-    grid-template-areas:
-      'queue stage'
-      'chat chat';
-    padding: 18px;
-  }
-
-  .queue-panel {
-    grid-area: queue;
-    max-height: 724px;
-  }
-
-  .stage {
-    grid-area: stage;
-    width: 100%;
-    max-width: 676px;
-    justify-self: center;
-  }
-
-  .chat-panel {
-    grid-area: chat;
-  }
-
-  .users-bar {
-    gap: 24px;
+    min-height: 600px;
   }
 }
 
@@ -2255,40 +2403,7 @@ ul {
   }
 
   .layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto auto;
-    grid-template-areas:
-      'stage'
-      'queue'
-      'chat';
     padding: 16px;
-    gap: 16px;
-  }
-
-  .stage {
-    grid-area: stage;
-    width: 100%;
-    max-width: none;
-    min-height: 620px;
-  }
-
-  .queue-panel {
-    grid-area: queue;
-    min-height: 0;
-    max-height: 560px;
-  }
-
-  .next-card {
-    max-width: 420px;
-  }
-
-  .queue-scroll {
-    max-height: 420px;
-  }
-
-  .chat-panel {
-    grid-area: chat;
-    height: 420px;
   }
 
   .users-bar {
