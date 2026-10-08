@@ -46,6 +46,16 @@ ipconfig
 
 Les autres ouvrent `http://<IP>:3215` (ex. `http://192.168.1.42:3215`).
 
+## Usage privé
+
+EasyJam est conçu pour un usage **strictement privé, sur un réseau local**, entre personnes qui se connaissent. Aucune instance publique n'est fournie, hébergée ou maintenue.
+
+- Ne pas exposer l'application sur Internet.
+- Pas d'authentification, pas de compte, pas de monétisation.
+- L'application ne stocke, n'héberge et ne distribue aucun fichier audio : elle lit des flux servis par YouTube.
+- L'extraction de ces flux via `yt-dlp` n'est pas couverte par les CGU de YouTube. Ce projet est un outil personnel ; son utilisation reste sous ta responsabilité.
+- Privilégie des œuvres dont tu détiens les droits, ou des catalogues libres.
+
 ## Fonctionnalités
 
 | Fonction | Détail |
@@ -61,7 +71,7 @@ Les autres ouvrent `http://<IP>:3215` (ex. `http://192.168.1.42:3215`).
 | **Paroles** | Récupération des paroles du morceau en cours |
 | **Pseudo** | Choix à la première connexion, modifiable via le menu du header ou la barre du bas |
 | **Volume individuel** | Chaque utilisateur règle son volume, sauvegardé dans le navigateur |
-| **Responsive** | 3 colonnes sur desktop, 2 sur tablette, une colonne sur mobile (lecteur en premier) |
+| **Responsive** | 3 colonnes sur desktop ; sur tablette/mobile le lecteur reste plein écran, la file et le chat s'ouvrent via deux boutons dans le header |
 
 ## Commandes
 
@@ -73,6 +83,7 @@ Les autres ouvrent `http://<IP>:3215` (ex. `http://192.168.1.42:3215`).
 | Clic sur la barre de progression | Seek (admin uniquement) |
 | Clic sur l'icône haut-parleur | Mute / Unmute |
 | `Entrée` / `Espace` sur un morceau de l'historique | Requeue au clavier |
+| Boutons file / chat du header (tablette et mobile) | Ouvrent les panneaux coulissants ; `Échap`, le fond ou le bouton × les referment |
 
 ## Design
 
@@ -112,6 +123,8 @@ EasyJam/
 │   ├── state.test.js   — Tests de l'état de la room
 │   └── ytdlp.test.js   — Tests du wrapper yt-dlp
 ├── docs/
+│   ├── DESIGN.md       — Référence du système visuel
+├── design-shots/       — Captures des écrans de référence
 ├── package.json
 └── README.md
 ```
@@ -124,6 +137,7 @@ npm test
 
 ## Notes
 
+- **Pas de déploiement public** : le projet est prévu pour tourner chez soi, sur le LAN, et n'est pas maintenu pour un hébergement accessible depuis Internet.
 - Pas de base de données : la file d'attente est persistée dans `queue.json`, le reste (utilisateurs, historique, chat, votes) est perdu au redémarrage du serveur.
 - Pas d'authentification : utilisation en LAN privé uniquement.
 - Le premier utilisateur connecté devient admin ; l'admin suivant est élu automatiquement s'il part.
