@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const https = require('https');
-const { createRoom, loadQueue } = require('./state');
+const { createRoom, loadQueue, saveQueue } = require('./state');
 const { checkYtDlpExists } = require('./ytdlp');
 const { createWSServer, setupWebSocket } = require('./ws-handler');
 
@@ -22,6 +22,17 @@ async function main() {
   if (room.queue.length > 0) {
     console.log('Restored ' + room.queue.length + ' tracks in queue');
   }
+  if (room.current) {
+    console.log('Restored current track "' + room.current.track.title + '" at ' + (room.current.position || 0).toFixed(1) + 's (paused)');
+  }
+
+  function shutdown(signal) {
+    console.log('[shutdown] ' + signal + ' received, saving playback state');
+    saveQueue(room);
+    process.exit(0);
+  }
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 
   const app = express();
   app.use(express.static(path.join(__dirname, '..', 'public')));

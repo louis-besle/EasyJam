@@ -161,6 +161,7 @@ async function startTestServer() {
   }
 
   async function close() {
+    stopTimer();
     for (const client of wss.clients) {
       try { client.terminate(); } catch {}
     }

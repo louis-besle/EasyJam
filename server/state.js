@@ -49,13 +49,13 @@ function removeFromQueue(room, trackId) {
 function playTrack(room, position = 0) {
   if (room.queue.length === 0) return null;
   const track = room.queue.shift();
-  saveQueue(room);
   room.current = {
     track,
     startedAt: Date.now(),
     position
   };
   room.isPlaying = true;
+  saveQueue(room);
   return track;
 }
 
@@ -64,6 +64,7 @@ function pauseTrack(room) {
   const pos = getCurrentPosition(room);
   room.current.position = pos;
   room.isPlaying = false;
+  saveQueue(room);
 }
 
 function skipTrack(room) {
@@ -74,6 +75,7 @@ function skipTrack(room) {
   } else {
     room.current = null;
     room.isPlaying = false;
+    saveQueue(room);
   }
   return skipped;
 }
@@ -155,7 +157,16 @@ function addChat(room, socketId, name, text) {
 
 function saveQueue(room, file = QUEUE_FILE) {
   try {
-    fs.writeFileSync(file, JSON.stringify(room.queue, null, 2), 'utf8');
+    const data = { queue: room.queue };
+    if (room.current) {
+      data.current = {
+        track: room.current.track,
+        position: room.isPlaying ? getCurrentPosition(room) : room.current.position
+      };
+    } else {
+      data.current = null;
+    }
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
   } catch {}
 }
 
@@ -172,7 +183,32 @@ function loadQueue(room, file = QUEUE_FILE) {
   try {
     if (!fs.existsSync(file)) return;
     const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (Array.isArray(data)) room.queue = data.map(normalizeQueuedTrack);
+
+    // Legacy format: a plain array of queued tracks.
+    if (Array.isArray(data)) {
+      room.queue = data.map(normalizeQueuedTrack);
+      return;
+    }
+
+    if (!data || typeof data !== 'object') return;
+    if (Array.isArray(data.queue)) room.queue = data.queue.map(normalizeQueuedTrack);
+
+    const saved = data.current;
+    if (!saved || !saved.track) return;
+
+    const track = normalizeQueuedTrack(saved.track);
+    const position = typeof saved.position === 'number' && saved.position >= 0 ? saved.position : 0;
+    const duration = track.duration || 0;
+    const finished = duration > 0 && position >= duration - 1;
+
+    if (finished) {
+      room.current = null;
+      room.isPlaying = false;
+      return;
+    }
+
+    room.current = { track, startedAt: 0, position };
+    room.isPlaying = false;
   } catch {}
 }
 

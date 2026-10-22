@@ -285,6 +285,70 @@ describe('ws-handler', () => {
     assert.strictEqual(calls, 1, 'a second refresh within 60s must be ignored');
   });
 
+  it('should resume a paused current track at its saved position on join', async () => {
+    const currentTrack = makeTrack({ duration: 200 });
+    const seedRoom = createRoom();
+    seedRoom.current = {
+      track: currentTrack,
+      startedAt: 0,
+      position: 42
+    };
+    seedRoom.isPlaying = false;
+
+    const before = Date.now();
+    await startServer(makeDeps(), seedRoom);
+    const client = await connect('Alice');
+
+    const play = await client.waitFor(m => m.type === 'play' && !!m.track);
+    const state = await client.waitFor(m => m.type === 'state');
+
+    assert.strictEqual(play.track.id, currentTrack.id);
+    assert.ok(Math.abs(play.position - 42) <= 1, 'expected ~42s, got ' + play.position);
+    assert.strictEqual(seedRoom.isPlaying, true);
+    assert.ok(seedRoom.current.startedAt >= before, 'playback clock should be restarted');
+    assert.ok(Math.abs(seedRoom.current.startedAt - Date.now()) < 2000);
+    assert.strictEqual(state.isPlaying, true);
+    assert.ok(state.position >= 42, 'state position should include the elapsed time');
+  });
+
+  it('should refresh a stale current track before resuming it on join', async () => {
+    const currentTrack = makeTrack({ resolvedAt: 0, streamUrl: '', duration: 200 });
+    const seedRoom = createRoom();
+    seedRoom.current = {
+      track: currentTrack,
+      startedAt: 0,
+      position: 12
+    };
+    seedRoom.isPlaying = false;
+
+    const calls = [];
+    const deps = makeDeps({
+      resolveYoutubeUrl: async (url) => {
+        calls.push(url);
+        return {
+          title: 'Fresh Title',
+          artist: 'Fresh Artist',
+          duration: 200,
+          thumbnail: 'https://stub/fresh.jpg',
+          streamUrl: 'https://stub/fresh-stream',
+          youtubeId: YOUTUBE_ID
+        };
+      }
+    });
+
+    await startServer(deps, seedRoom);
+    const client = await connect('Alice');
+
+    const play = await client.waitFor(m => m.type === 'play' && !!m.track);
+
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(calls[0], 'https://www.youtube.com/watch?v=' + YOUTUBE_ID);
+    assert.strictEqual(play.track.url, 'https://stub/fresh-stream');
+    assert.strictEqual(seedRoom.current.track.streamUrl, 'https://stub/fresh-stream');
+    assert.ok(Math.abs(play.position - 12) <= 1, 'expected ~12s, got ' + play.position);
+    assert.strictEqual(seedRoom.isPlaying, true);
+  });
+
   it('should expose resolvedAt in queue_updated after adding to an existing session', async () => {
     const seedRoom = createRoom();
     const currentTrack = makeTrack({ id: 'current-track' });

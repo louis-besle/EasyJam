@@ -3,7 +3,7 @@ const { WebSocketServer } = require('ws');
 const {
   addToQueue, removeFromQueue, playTrack, pauseTrack, skipTrack,
   addUser, removeUser, voteSkip, getCurrentPosition, getFullState, addChat,
-  addToHistory
+  addToHistory, saveQueue
 } = require('./state');
 const ytdlp = require('./ytdlp');
 const { startTimer, stopTimer } = require('./timer');
@@ -73,6 +73,12 @@ function setupWebSocket(wss, room, deps = {}) {
               await playAndBroadcast(room, wss, 0, resolveFn);
             } catch (err) {
               console.error('[join] autoplay failed: ' + ((err && err.message) || err));
+            }
+          } else if (room.current && !room.isPlaying) {
+            try {
+              await resumePlayback(room, wss, resolveFn);
+            } catch (err) {
+              console.error('[join] resume failed: ' + ((err && err.message) || err));
             }
           }
           sendFullState(ws, room);
@@ -168,6 +174,7 @@ function setupWebSocket(wss, room, deps = {}) {
                 room.isPlaying = true;
                 room.current.startedAt = Date.now();
                 startTimer(room, () => autoSkip(room, wss, resolveFn));
+                saveQueue(room);
                 broadcast(wss, { type: 'play', position: room.current.position });
               }
               break;
@@ -195,6 +202,7 @@ function setupWebSocket(wss, room, deps = {}) {
                 } else {
                   broadcast(wss, { type: 'pause', position: room.current.position });
                 }
+                saveQueue(room);
               }
               break;
             }
@@ -250,6 +258,7 @@ function setupWebSocket(wss, room, deps = {}) {
   syncInterval = setInterval(() => {
     if (room.isPlaying && room.current) {
       broadcast(wss, { type: 'sync', position: getCurrentPosition(room) });
+      saveQueue(room);
     }
   }, 3000);
   syncInterval.unref?.();
@@ -291,6 +300,26 @@ async function playAndBroadcast(room, wss, position, resolveFn) {
   if (room.current && room.current.track === track) room.current.startedAt = Date.now();
   startTimer(room, () => autoSkip(room, wss, resolveFn));
   broadcast(wss, { type: 'play', track: toClientTrack(track), position });
+  broadcast(wss, { type: 'queue_updated', queue: room.queue.map(toClientTrack) });
+  broadcastVotes(wss, room);
+}
+
+async function resumePlayback(room, wss, resolveFn) {
+  if (!room.current || !room.current.track) return;
+  const track = room.current.track;
+
+  if (isStreamStale(track)) await refreshTrack(track, resolveFn);
+  if (!room.current || room.current.track !== track) return;
+
+  room.current.startedAt = Date.now();
+  room.isPlaying = true;
+  startTimer(room, () => autoSkip(room, wss, resolveFn));
+
+  if (!room.history[0] || room.history[0].id !== track.id) addToHistory(room, track);
+
+  saveQueue(room);
+  console.log('[resume] resuming "' + track.title + '" at ' + (room.current.position || 0).toFixed(1) + 's');
+  broadcast(wss, { type: 'play', track: toClientTrack(track), position: room.current.position });
   broadcast(wss, { type: 'queue_updated', queue: room.queue.map(toClientTrack) });
   broadcastVotes(wss, room);
 }

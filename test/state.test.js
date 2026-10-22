@@ -277,6 +277,85 @@ describe('queue persistence (saveQueue / loadQueue)', () => {
     assert.strictEqual(again.queue.length, 2);
   });
 
+  it('should restore the current track and its saved position', () => {
+    const file = path.join(tmpDir, 'queue-current.json');
+
+    const room = createRoom();
+    addToQueue(room, trackData);
+    addToQueue(room, { ...trackData, title: 'Second Song', youtubeId: 'abcdefghijk' });
+    playTrack(room, 0);
+    room.current.position = 42.5;
+    room.isPlaying = false;
+    saveQueue(room, file);
+
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.ok(!Array.isArray(raw), 'the persisted format is now an object');
+    assert.strictEqual(raw.current.position, 42.5);
+    assert.strictEqual(raw.current.track.title, 'Test Song');
+
+    const restored = createRoom();
+    loadQueue(restored, file);
+
+    assert.strictEqual(restored.queue.length, 1);
+    assert.strictEqual(restored.queue[0].title, 'Second Song');
+    assert.ok(restored.current, 'the current track should be restored');
+    assert.strictEqual(restored.current.track.title, 'Test Song');
+    assert.strictEqual(restored.current.position, 42.5);
+    assert.strictEqual(restored.current.startedAt, 0);
+    assert.strictEqual(restored.isPlaying, false);
+    assert.strictEqual(typeof restored.current.track.id, 'string');
+    assert.ok(restored.current.track.id.length > 0);
+    assert.strictEqual(typeof restored.current.track.resolvedAt, 'number');
+  });
+
+  it('should still load a legacy array-only queue file', () => {
+    const file = path.join(tmpDir, 'queue-array.json');
+    fs.writeFileSync(file, JSON.stringify([
+      { ...trackData, id: 'legacy-1', resolvedAt: Date.now() }
+    ]), 'utf8');
+
+    const room = createRoom();
+    loadQueue(room, file);
+
+    assert.strictEqual(room.queue.length, 1);
+    assert.strictEqual(room.queue[0].title, 'Test Song');
+    assert.strictEqual(room.current, null);
+    assert.strictEqual(room.isPlaying, false);
+  });
+
+  it('should persist the live position when the room is playing', () => {
+    const file = path.join(tmpDir, 'queue-live.json');
+
+    const room = createRoom();
+    addToQueue(room, { ...trackData, duration: 200 });
+    playTrack(room, 10);
+    room.current.startedAt = Date.now() - 5000;
+    saveQueue(room, file);
+
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.ok(raw.current.position >= 14, 'expected ~15s, got ' + raw.current.position);
+    assert.ok(raw.current.position <= 16, 'expected ~15s, got ' + raw.current.position);
+  });
+
+  it('should not restore a current track that already finished', () => {
+    const file = path.join(tmpDir, 'queue-finished.json');
+    fs.writeFileSync(file, JSON.stringify({
+      queue: [{ ...trackData, id: 'queued-1', resolvedAt: Date.now() }],
+      current: {
+        track: { ...trackData, id: 'current-1', duration: 120, resolvedAt: Date.now() },
+        position: 120
+      }
+    }), 'utf8');
+
+    const room = createRoom();
+    loadQueue(room, file);
+
+    assert.strictEqual(room.current, null);
+    assert.strictEqual(room.isPlaying, false);
+    assert.strictEqual(room.queue.length, 1);
+    assert.strictEqual(room.queue[0].id, 'queued-1');
+  });
+
   it('should normalize legacy entries missing id and resolvedAt', () => {
     const file = path.join(tmpDir, 'legacy-queue.json');
     fs.writeFileSync(file, JSON.stringify([{
