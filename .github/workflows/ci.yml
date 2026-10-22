@@ -29,3 +29,14 @@ jobs:
 
       - name: Browser E2E tests
         run: npm run test:e2e
+
+      - name: Upload visual snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-snapshots
+          path: test/e2e/snapshots/__actual__/
+          if-no-files-found: ignore
+
+      - name: Load tests
+        run: npm run test:load

@@ -123,9 +123,11 @@ EasyJam/
 │   ├── state.test.js   — Tests de l'état de la room
 │   ├── ws-handler.test.js — Tests du protocole WebSocket
 │   ├── ytdlp.test.js   — Tests du wrapper yt-dlp
-│   ├── e2e/            — Tests navigateur (puppeteer-core)
+│   ├── e2e/            — Tests navigateur + snapshots visuels
+│   ├── load/           — Test de charge 10 clients WebSocket
 │   └── helpers/        — Serveur de test isolé et détection navigateur
-├── .github/workflows/  — CI (tests unitaires + E2E)
+├── scripts/            — Mise à jour des baselines visuelles
+├── .github/workflows/  — CI (tests unitaires + E2E + charge)
 ├── docs/
 │   ├── DESIGN.md       — Référence du système visuel
 ├── design-shots/       — Captures des écrans de référence
@@ -136,10 +138,12 @@ EasyJam/
 ## Tests
 
 ```powershell
-npm test          # tests unitaires (state, ws-handler, yt-dlp)
-npm run test:e2e  # tests navigateur (join, chat, ajout de morceau, drawer mobile)
-npm run test:all  # unitaires + E2E
-npm run check     # préflight local : unitaires + syntaxe des scripts front
+npm test           # tests unitaires + WebSocket (state, ws-handler, yt-dlp)
+npm run test:e2e   # tests navigateur + snapshots visuels
+npm run test:visual # snapshots visuels uniquement
+npm run test:load  # charge : 10 clients WebSocket simultanés
+npm run test:all   # unitaires + E2E + charge
+npm run check      # préflight rapide : unitaires + syntaxe des scripts front
 ```
 
 Les tests E2E utilisent `puppeteer-core` avec un Chrome/Edge **déjà installé** (aucun Chromium téléchargé). Le navigateur est détecté automatiquement (Chrome ou Edge sous Windows, `google-chrome` / `chromium` sous Linux, Chrome ou Edge sous macOS). Pour imposer un binaire :
@@ -151,12 +155,23 @@ npm run test:e2e
 
 Si aucun navigateur n'est trouvé, la suite E2E est marquée `skip` avec un message explicite plutôt que d'échouer. Le serveur de test est isolé : port éphémère, file de test temporaire, flux audio local et stubs `resolveYoutubeUrl` / `searchYoutube` (aucun appel réseau à YouTube).
 
-La CI GitHub Actions (`.github/workflows/ci.yml`) exécute `npm test` puis `npm run test:e2e` sur `ubuntu-latest` à chaque `push` et `pull_request`.
+### Snapshots visuels
+
+Les références sont versionnées par plateforme dans `test/e2e/snapshots/<plateforme>/` (join, room, drawer mobile). Après un changement de design volontaire :
+
+```powershell
+npm run snapshots  # régénère les baselines de la plateforme courante
+```
+
+Sans baseline pour la plateforme courante, les tests visuels sont `skip` (utile en CI Linux si seules les baselines Windows sont présentes). La CI publie les captures courantes dans l'artefact `visual-snapshots`, ce qui permet de récupérer les images et de régénérer les baselines au besoin.
+
+La CI GitHub Actions (`.github/workflows/ci.yml`) exécute `npm test`, `npm run test:e2e` puis `npm run test:load` sur `ubuntu-latest` à chaque `push` et `pull_request`.
 
 ## Notes
 
 - **Pas de déploiement public** : le projet est prévu pour tourner chez soi, sur le LAN, et n'est pas maintenu pour un hébergement accessible depuis Internet.
-- Pas de base de données : la file d'attente est persistée dans `queue.json`, le reste (utilisateurs, historique, chat, votes) est perdu au redémarrage du serveur.
+- Pas de base de données : la file **et la piste en cours avec sa position** sont persistées dans `queue.json`. Les utilisateurs, l'historique, le chat et les votes sont perdus au redémarrage du serveur.
+- Au premier join après un redémarrage, la piste en cours reprend à sa position sauvegardée (URL de stream rafraîchie si nécessaire).
 - Pas d'authentification : utilisation en LAN privé uniquement.
 - Le premier utilisateur connecté devient admin ; l'admin suivant est élu automatiquement s'il part.
 - Les URLs de stream YouTube expirent après ~6 h ; elles sont ré-résolues automatiquement au lancement d'un morceau si elles ont plus de 5 h, et à la demande si le navigateur signale une erreur de lecture.
