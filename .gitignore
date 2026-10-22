@@ -4,3 +4,6 @@ node_modules/
 
 queue.json
 generate_commits.js
+
+# Visual regression run artifacts (baselines are versioned, captures are not)
+test/e2e/snapshots/__actual__/
