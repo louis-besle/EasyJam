@@ -1,6 +1,6 @@
 # EasyJam
 
-Jukebox YouTube collaboratif en temps réel pour LAN parties. Une file d'attente commune, un lecteur synchronisé, un chat et un vote de skip — sans compte ni cloud.
+Jukebox YouTube collaboratif en temps réel pour LAN parties. Une file d'attente commune, un lecteur synchronisé, un chat et un vote de skip - sans compte ni cloud.
 
 > Interface reconstruite d'après le système visuel **EasyJam · Redesign v1** (Figma) : canvas noir, accent orange `#ff6b35`, typographie Sora / Inter, layout 372 / 676 / 296.
 
@@ -16,7 +16,7 @@ EasyJam est un **projet personnel et pédagogique**, sans aucune affiliation ave
 ## Prérequis
 
 - [Node.js](https://nodejs.org/) (v20+)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — extraction des flux YouTube
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - extraction des flux YouTube
 
 ```powershell
 pip install yt-dlp
@@ -101,9 +101,11 @@ Le thème est centralisé dans les custom properties de `public/style.css` :
 - **Surfaces** : `#000000` (canvas), `#0d0d0d` (panneaux), `#1f1f1f` (éléments surélevés)
 - **Accent** : `#ff6b35`, texte accent `#ffc9ad`
 - **Texte** : `#ffffff`, `#e0e0e0`, `#b8b8b8`, `#8a8a8a`
-- **Rayons** : 6 px (contenu), 8 px (panneaux), 500 px (champs), 9999 px (actions)
+- **Rayons** : 6 px (contenu), 8 px (panneaux), 10 px (cartes), 500 px (champs), 9999 px (actions)
 - **Typo** : Sora 700 pour les titres, Inter 400/500/700 pour l'UI
 - **Tracking** : `--tracking-tight: -0.025em` pour les labels
+
+Le détail des tokens, composants et breakpoints est dans [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## Stack
 
@@ -117,29 +119,30 @@ Le thème est centralisé dans les custom properties de `public/style.css` :
 ```
 EasyJam/
 ├── server/
-│   ├── index.js        — Point d'entrée (Express + WebSocket + API paroles)
-│   ├── state.js        — État de la room (file, lecture, votes, historique, chat)
-│   ├── ws-handler.js   — Routage des messages WebSocket
-│   ├── ytdlp.js        — Wrapper yt-dlp (résolution URL + recherche)
-│   └── timer.js        — Timer pour l'auto-skip
+│   ├── index.js        - Point d'entrée (Express + WebSocket + API paroles)
+│   ├── state.js        - État de la room (file, lecture, votes, historique, chat)
+│   ├── ws-handler.js   - Routage des messages WebSocket
+│   ├── ytdlp.js        - Wrapper yt-dlp (résolution URL + recherche)
+│   └── timer.js        - Timer pour l'auto-skip
 ├── public/
-│   ├── index.html      — SPA (Join + Now Playing)
-│   ├── style.css       — Design system EasyJam (tokens, composants, responsive)
-│   ├── app.js          — Client WebSocket + orchestration
-│   ├── player.js       — Wrapper HTML5 Audio (synchro, autoplay recovery)
-│   └── ui.js           — Rendu DOM (lecteur, file, historique, chat, utilisateurs)
+│   ├── index.html      - SPA (Join + Now Playing)
+│   ├── style.css       - Design system EasyJam (tokens, composants, responsive)
+│   ├── app.js          - Client WebSocket + orchestration
+│   ├── player.js       - Wrapper HTML5 Audio (synchro, autoplay recovery)
+│   └── ui.js           - Rendu DOM (lecteur, file, historique, chat, utilisateurs)
 ├── test/
-│   ├── state.test.js   — Tests de l'état de la room
-│   ├── ws-handler.test.js — Tests du protocole WebSocket
-│   ├── ytdlp.test.js   — Tests du wrapper yt-dlp
-│   ├── e2e/            — Tests navigateur + snapshots visuels
-│   ├── load/           — Test de charge 10 clients WebSocket
-│   └── helpers/        — Serveur de test isolé et détection navigateur
-├── scripts/            — Mise à jour des baselines visuelles
-├── .github/workflows/  — CI (tests unitaires + E2E + charge)
+│   ├── state.test.js   - Tests de l'état de la room
+│   ├── ws-handler.test.js - Tests du protocole WebSocket
+│   ├── ytdlp.test.js   - Tests du wrapper yt-dlp
+│   ├── e2e/            - Tests navigateur + snapshots visuels
+│   ├── load/           - Test de charge 10 clients WebSocket
+│   └── helpers/        - Serveur de test isolé et détection navigateur
 ├── docs/
-│   ├── DESIGN.md       — Référence du système visuel
-├── design-shots/       — Captures des écrans de référence
+│   └── DESIGN.md       - Design system EasyJam
+├── design-shots/       - Captures des écrans de référence
+├── scripts/            - Mise à jour des baselines visuelles
+├── .github/workflows/  - CI (tests unitaires + E2E + charge)
+├── LICENSE
 ├── package.json
 └── README.md
 ```
@@ -174,7 +177,7 @@ npm run snapshots  # régénère les baselines de la plateforme courante
 
 Sans baseline pour la plateforme courante, les tests visuels sont `skip` (utile en CI Linux si seules les baselines Windows sont présentes). La CI publie les captures courantes dans l'artefact `visual-snapshots`, ce qui permet de récupérer les images et de régénérer les baselines au besoin.
 
-La CI GitHub Actions (`.github/workflows/ci.yml`) exécute `npm test`, `npm run test:e2e` puis `npm run test:load` sur `ubuntu-latest` à chaque `push` et `pull_request`.
+La CI GitHub Actions (`.github/workflows/ci.yml`) exécute `npm test`, `npm run test:e2e` puis `npm run test:load` sur `ubuntu-24.04` avec Node 24, à chaque `push` et `pull_request`.
 
 ## Notes
 

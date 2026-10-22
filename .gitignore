@@ -3,7 +3,10 @@ node_modules/
 .env
 
 queue.json
-generate_commits.js
 
 # Visual regression run artifacts (baselines are versioned, captures are not)
 test/e2e/snapshots/__actual__/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
