@@ -4,6 +4,15 @@ Jukebox YouTube collaboratif en temps réel pour LAN parties. Une file d'attente
 
 > Interface reconstruite d'après le système visuel **EasyJam · Redesign v1** (Figma) : canvas noir, accent orange `#ff6b35`, typographie Sora / Inter, layout 372 / 676 / 296.
 
+## Avertissement
+
+EasyJam est un **projet personnel et pédagogique**, sans aucune affiliation avec YouTube, Google ou Spotify.
+
+- Aucun fichier audio n'est stocké ni distribué : l'application demande à `yt-dlp` l'URL d'un flux YouTube, que chaque navigateur lit directement.
+- L'extraction de flux via `yt-dlp` n'est pas couverte par les CGU de YouTube ; l'usage reste sous la responsabilité de l'utilisateur.
+- Utilisation prévue : **réseau local privé**, entre personnes qui se connaissent. Aucune instance publique n'est fournie ni maintenue.
+- Les captures et données du dépôt sont fictives. Les marques et interfaces tierces citées appartiennent à leurs propriétaires.
+
 ## Prérequis
 
 - [Node.js](https://nodejs.org/) (v18+)
@@ -175,3 +184,7 @@ La CI GitHub Actions (`.github/workflows/ci.yml`) exécute `npm test`, `npm run 
 - Pas d'authentification : utilisation en LAN privé uniquement.
 - Le premier utilisateur connecté devient admin ; l'admin suivant est élu automatiquement s'il part.
 - Les URLs de stream YouTube expirent après ~6 h ; elles sont ré-résolues automatiquement au lancement d'un morceau si elles ont plus de 5 h, et à la demande si le navigateur signale une erreur de lecture.
+
+## Licence
+
+Le code est distribué sous licence [MIT](LICENSE). Les marques, interfaces et contenus tiers cités appartiennent à leurs propriétaires. EasyJam n'est affilié ni à YouTube, ni à Google, ni à Spotify.

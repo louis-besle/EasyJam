@@ -1,6 +1,8 @@
 # Spotify — Style Reference
 > Nocturnal jukebox control room
 
+> **Note** : référence visuelle interne (couleurs, typographie, espacements). Aucun asset, logo ou composant propriétaire n'est utilisé. EasyJam n'est pas affilié à Spotify ; les marques citées appartiennent à leurs propriétaires.
+
 **Theme:** dark
 
 Source measurements are normalized; roles and recommendations are interpreted. Font summary lists are independent, not paired by position. HTML examples are reconstructions, not source components.

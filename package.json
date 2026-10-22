@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "description": "Collaborative YouTube music streaming for LAN parties",
+  "license": "MIT",
+  "author": "Louis Besle",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/louis-besle/EasyJam.git"
+  },
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
