@@ -121,7 +121,11 @@ EasyJam/
 │   └── ui.js           — Rendu DOM (lecteur, file, historique, chat, utilisateurs)
 ├── test/
 │   ├── state.test.js   — Tests de l'état de la room
-│   └── ytdlp.test.js   — Tests du wrapper yt-dlp
+│   ├── ws-handler.test.js — Tests du protocole WebSocket
+│   ├── ytdlp.test.js   — Tests du wrapper yt-dlp
+│   ├── e2e/            — Tests navigateur (puppeteer-core)
+│   └── helpers/        — Serveur de test isolé et détection navigateur
+├── .github/workflows/  — CI (tests unitaires + E2E)
 ├── docs/
 │   ├── DESIGN.md       — Référence du système visuel
 ├── design-shots/       — Captures des écrans de référence
@@ -132,8 +136,22 @@ EasyJam/
 ## Tests
 
 ```powershell
-npm test
+npm test          # tests unitaires (state, ws-handler, yt-dlp)
+npm run test:e2e  # tests navigateur (join, chat, ajout de morceau, drawer mobile)
+npm run test:all  # unitaires + E2E
+npm run check     # préflight local : unitaires + syntaxe des scripts front
 ```
+
+Les tests E2E utilisent `puppeteer-core` avec un Chrome/Edge **déjà installé** (aucun Chromium téléchargé). Le navigateur est détecté automatiquement (Chrome ou Edge sous Windows, `google-chrome` / `chromium` sous Linux, Chrome ou Edge sous macOS). Pour imposer un binaire :
+
+```powershell
+$env:CHROME_PATH = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+npm run test:e2e
+```
+
+Si aucun navigateur n'est trouvé, la suite E2E est marquée `skip` avec un message explicite plutôt que d'échouer. Le serveur de test est isolé : port éphémère, file de test temporaire, flux audio local et stubs `resolveYoutubeUrl` / `searchYoutube` (aucun appel réseau à YouTube).
+
+La CI GitHub Actions (`.github/workflows/ci.yml`) exécute `npm test` puis `npm run test:e2e` sur `ubuntu-latest` à chaque `push` et `pull_request`.
 
 ## Notes
 
@@ -141,4 +159,4 @@ npm test
 - Pas de base de données : la file d'attente est persistée dans `queue.json`, le reste (utilisateurs, historique, chat, votes) est perdu au redémarrage du serveur.
 - Pas d'authentification : utilisation en LAN privé uniquement.
 - Le premier utilisateur connecté devient admin ; l'admin suivant est élu automatiquement s'il part.
-- Les URLs de stream YouTube expirent après ~6 h ; elles sont régénérées à chaque ajout ou redémarrage.
+- Les URLs de stream YouTube expirent après ~6 h ; elles sont ré-résolues automatiquement au lancement d'un morceau si elles ont plus de 5 h, et à la demande si le navigateur signale une erreur de lecture.

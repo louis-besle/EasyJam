@@ -6,11 +6,17 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node --test test/e2e/*.test.js",
+    "test:all": "npm test && npm run test:e2e",
+    "check": "npm test && node --check public/app.js && node --check public/ui.js && node --check public/player.js"
   },
   "dependencies": {
     "express": "^4.21.0",
     "uuid": "^10.0.0",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.1.0"
   }
 }
