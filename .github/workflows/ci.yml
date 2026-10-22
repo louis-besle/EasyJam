@@ -6,7 +6,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # GitHub-hosted Ubuntu runners ship Google Chrome at this path.
       # If it is missing, the browser suite skips itself instead of failing.
