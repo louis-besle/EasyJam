@@ -5,17 +5,55 @@ const {
   addUser, removeUser, voteSkip, getCurrentPosition, getFullState, addChat,
   addToHistory
 } = require('./state');
-const { resolveYoutubeUrl, searchYoutube } = require('./ytdlp');
+const ytdlp = require('./ytdlp');
 const { startTimer, stopTimer } = require('./timer');
 
 let syncInterval = null;
+
+const STREAM_TTL_MS = (() => {
+  const override = parseInt(process.env.EASYJAM_STREAM_TTL_MS, 10);
+  return Number.isFinite(override) && override > 0 ? override : 5 * 60 * 60 * 1000;
+})();
+const REFRESH_COOLDOWN_MS = 60 * 1000;
+const refreshingTracks = new Set();
+
+function isStreamStale(track) {
+  if (!track) return true;
+  if (!track.streamUrl || !track.resolvedAt) return true;
+  return Date.now() - track.resolvedAt > STREAM_TTL_MS;
+}
+
+async function refreshTrack(track, resolveFn) {
+  if (!track || !track.youtubeId) return false;
+  if (refreshingTracks.has(track.id)) return false;
+  refreshingTracks.add(track.id);
+  try {
+    const resolved = await resolveFn('https://www.youtube.com/watch?v=' + track.youtubeId);
+    if (!resolved) return false;
+    if (resolved.title) track.title = resolved.title;
+    if (resolved.artist) track.artist = resolved.artist;
+    if (typeof resolved.duration === 'number') track.duration = resolved.duration;
+    if (resolved.thumbnail) track.thumbnail = resolved.thumbnail;
+    if (resolved.streamUrl) track.streamUrl = resolved.streamUrl;
+    track.resolvedAt = Date.now();
+    track.lastRefreshAt = Date.now();
+    return true;
+  } catch (err) {
+    console.error('[refresh] failed for "' + (track.title || track.youtubeId) + '": ' + ((err && err.message) || err));
+    return false;
+  } finally {
+    refreshingTracks.delete(track.id);
+  }
+}
 
 function createWSServer(server) {
   return new WebSocketServer({ server });
 }
 
-function setupWebSocket(wss, room) {
+function setupWebSocket(wss, room, deps = {}) {
   let nextId = 1;
+  const resolveFn = deps.resolveYoutubeUrl || ytdlp.resolveYoutubeUrl;
+  const searchFn = deps.searchYoutube || ytdlp.searchYoutube;
 
   wss.on('connection', (ws) => {
     const socketId = 'u' + (nextId++);
@@ -30,6 +68,13 @@ function setupWebSocket(wss, room) {
           const user = addUser(room, socketId, msg.name || 'Anonymous');
           console.log('[join] ' + user.name + ' connected (total: ' + Object.keys(room.users).length + ')');
           send(ws, { type: 'welcome', socketId, isAdmin: user.isAdmin });
+          if (!room.current && room.queue.length > 0) {
+            try {
+              await playAndBroadcast(room, wss, 0, resolveFn);
+            } catch (err) {
+              console.error('[join] autoplay failed: ' + ((err && err.message) || err));
+            }
+          }
           sendFullState(ws, room);
           broadcast(wss, { type: 'user_joined', socketId, name: user.name, users: getUsersArray(room) });
           broadcast(wss, { type: 'user_count', count: Object.keys(room.users).length });
@@ -37,7 +82,7 @@ function setupWebSocket(wss, room) {
         }
         case 'add_to_queue': {
           try {
-            const resolved = await resolveYoutubeUrl(msg.url);
+            const resolved = await resolveFn(msg.url);
             const user = room.users[socketId];
             const track = addToQueue(room, {
               ...resolved, addedBy: user ? user.name : 'Unknown'
@@ -46,7 +91,7 @@ function setupWebSocket(wss, room) {
             send(ws, { type: 'added', track: toClientTrack(track) });
             broadcast(wss, { type: 'queue_updated', queue: room.queue.map(toClientTrack) });
             broadcast(wss, { type: 'toast', message: (user ? user.name : 'Someone') + ' added ' + track.title });
-            if (!room.current && room.queue.length > 0) playAndBroadcast(room, wss, 0);
+            if (!room.current && room.queue.length > 0) await playAndBroadcast(room, wss, 0, resolveFn);
           } catch (err) {
             send(ws, { type: 'error', message: err.message || 'Failed to resolve URL' });
           }
@@ -73,7 +118,7 @@ function setupWebSocket(wss, room) {
             send(ws, { type: 'error', message: 'Already voted' }); break;
           }
           broadcastVotes(wss, room);
-          if (result.reachedThreshold) { stopTimer(); performSkip(room, wss); }
+          if (result.reachedThreshold) { stopTimer(); await performSkip(room, wss, resolveFn); }
           break;
         }
         case 'search': {
@@ -88,12 +133,26 @@ function setupWebSocket(wss, room) {
                 return { youtubeId: t.youtubeId, title: t.title, artist: t.artist, duration: t.duration, thumbnail: t.thumbnail, fromHistory: true };
               });
             }
-            var results = await searchYoutube(msg.query);
+            var results = await searchFn(msg.query);
             var merged = historyResults.concat(results.slice(0, 10));
             send(ws, { type: 'search_results', results: merged });
           } catch (err) {
             send(ws, { type: 'error', message: err.message });
           }
+          break;
+        }
+
+        case 'refresh_stream': {
+          if (!room.current || !msg.trackId || room.current.track.id !== msg.trackId) break;
+          const track = room.current.track;
+          if (track.lastRefreshAt && Date.now() - track.lastRefreshAt < REFRESH_COOLDOWN_MS) break;
+          const refreshed = await refreshTrack(track, resolveFn);
+          if (!refreshed) break;
+          broadcast(wss, {
+            type: 'track_refreshed',
+            track: toClientTrack(track),
+            position: getCurrentPosition(room)
+          });
           break;
         }
 
@@ -104,11 +163,11 @@ function setupWebSocket(wss, room) {
           switch (msg.action) {
             case 'play': {
               if (!room.current && room.queue.length > 0) {
-                playAndBroadcast(room, wss, 0);
+                await playAndBroadcast(room, wss, 0, resolveFn);
               } else if (room.current && !room.isPlaying) {
                 room.isPlaying = true;
                 room.current.startedAt = Date.now();
-                startTimer(room, () => autoSkip(room, wss));
+                startTimer(room, () => autoSkip(room, wss, resolveFn));
                 broadcast(wss, { type: 'play', position: room.current.position });
               }
               break;
@@ -122,7 +181,7 @@ function setupWebSocket(wss, room) {
               break;
             }
             case 'skip': {
-              if (room.current) { stopTimer(); performSkip(room, wss); }
+              if (room.current) { stopTimer(); await performSkip(room, wss, resolveFn); }
               break;
             }
             case 'seek': {
@@ -131,7 +190,7 @@ function setupWebSocket(wss, room) {
                 room.current.position = Math.max(0, Math.min(msg.position, room.current.track.duration || Infinity));
                 if (room.isPlaying) {
                   room.current.startedAt = Date.now();
-                  startTimer(room, () => autoSkip(room, wss));
+                  startTimer(room, () => autoSkip(room, wss, resolveFn));
                   broadcast(wss, { type: 'play', position: room.current.position });
                 } else {
                   broadcast(wss, { type: 'pause', position: room.current.position });
@@ -187,18 +246,25 @@ function setupWebSocket(wss, room) {
     });
   });
 
+  if (syncInterval) clearInterval(syncInterval);
   syncInterval = setInterval(() => {
     if (room.isPlaying && room.current) {
       broadcast(wss, { type: 'sync', position: getCurrentPosition(room) });
     }
   }, 3000);
+  syncInterval.unref?.();
 }
 
-function performSkip(room, wss) {
+async function performSkip(room, wss, resolveFn) {
   const skipped = skipTrack(room);
   if (skipped) {
     console.log('[skip] skipped "' + skipped.title + '" -> "' + (room.current?.track?.title || 'nothing') + '"');
     addToHistory(room, skipped);
+  }
+  if (room.current && isStreamStale(room.current.track)) {
+    const nextTrack = room.current.track;
+    await refreshTrack(nextTrack, resolveFn);
+    if (room.current && room.current.track === nextTrack) room.current.startedAt = Date.now();
   }
   broadcast(wss, {
     type: 'skip',
@@ -207,7 +273,7 @@ function performSkip(room, wss) {
     queue: room.queue.map(toClientTrack)
   });
   if (room.current) {
-    startTimer(room, () => autoSkip(room, wss));
+    startTimer(room, () => autoSkip(room, wss, resolveFn));
     broadcast(wss, { type: 'play', position: 0 });
     broadcast(wss, { type: 'queue_updated', queue: room.queue.map(toClientTrack) });
   } else {
@@ -216,18 +282,24 @@ function performSkip(room, wss) {
   broadcastVotes(wss, room);
 }
 
-function playAndBroadcast(room, wss, position) {
+async function playAndBroadcast(room, wss, position, resolveFn) {
   const track = playTrack(room, position);
   if (!track) return;
   console.log('[play] now playing "' + track.title + '" by ' + track.artist);
   addToHistory(room, track);
-  startTimer(room, () => autoSkip(room, wss));
+  if (isStreamStale(track)) await refreshTrack(track, resolveFn);
+  if (room.current && room.current.track === track) room.current.startedAt = Date.now();
+  startTimer(room, () => autoSkip(room, wss, resolveFn));
   broadcast(wss, { type: 'play', track: toClientTrack(track), position });
   broadcast(wss, { type: 'queue_updated', queue: room.queue.map(toClientTrack) });
   broadcastVotes(wss, room);
 }
 
-function autoSkip(room, wss) { performSkip(room, wss); }
+function autoSkip(room, wss, resolveFn) {
+  performSkip(room, wss, resolveFn).catch((err) => {
+    console.error('[skip] auto-skip failed: ' + ((err && err.message) || err));
+  });
+}
 
 function sendFullState(ws, room) {
   const state = getFullState(room);
@@ -273,7 +345,7 @@ function toClientTrack(track) {
     id: track.id, title: track.title, artist: track.artist,
     duration: track.duration, thumbnail: track.thumbnail,
     youtubeId: track.youtubeId, url: track.streamUrl, streamUrl: track.streamUrl,
-    addedBy: track.addedBy, addedAt: track.addedAt
+    addedBy: track.addedBy, addedAt: track.addedAt, resolvedAt: track.resolvedAt
   };
 }
 

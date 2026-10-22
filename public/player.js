@@ -87,6 +87,10 @@ class Player {
 
   onPlayBlocked(cb) { this._retryCallback = cb; }
 
+  onError(cb) {
+    if (typeof cb === 'function') this.audio.addEventListener('error', cb);
+  }
+
   play() { this._tryPlay(); }
   pause() { this.audio.pause(); }
   seek(time) { this.audio.currentTime = time; }

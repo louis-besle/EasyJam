@@ -15,6 +15,7 @@
   let searchTimer = null;
   let lastQueue = [];
   let history = [];
+  let refreshRequestedFor = null;
 
   function rememberPlayed(track) {
     if (!track || !track.id) return;
@@ -93,6 +94,7 @@
         if (msg.socketId) mySocketId = msg.socketId;
         if (msg.isAdmin !== undefined) isAdmin = msg.isAdmin;
         currentTrack = msg.currentTrack || null;
+        refreshRequestedFor = null;
         isPlaying = msg.isPlaying || false;
         lastQueue = msg.queue || [];
         history = msg.history || [];
@@ -127,6 +129,7 @@
       case 'play':
         if (msg.track) {
           if (currentTrack && currentTrack.id !== msg.track.id) rememberPlayed(currentTrack);
+          refreshRequestedFor = null;
           currentTrack = msg.track;
           var url = msg.track.url || msg.track.streamUrl;
           if (url && player) player.setSource(url);
@@ -155,6 +158,7 @@
       case 'skip':
         if (msg.prevTrack) rememberPlayed(msg.prevTrack);
         currentTrack = msg.nextTrack || null;
+        refreshRequestedFor = null;
         isPlaying = !!msg.nextTrack;
         hasVoted = false;
         UI.resetVoteButton();
@@ -189,6 +193,26 @@
         if (player && currentTrack && !player.isPaused()) {
           player.syncPosition(msg.position || 0);
         }
+        break;
+
+      case 'track_refreshed':
+        if (!msg.track || !currentTrack || msg.track.id !== currentTrack.id) break;
+        currentTrack = msg.track;
+        refreshRequestedFor = null;
+        if (player) {
+          const refreshedUrl = currentTrack.url || currentTrack.streamUrl;
+          if (refreshedUrl) player.setSource(refreshedUrl);
+          if (isPlaying) {
+            player.playFrom(msg.position || 0);
+            UI.startProgressUpdates(player);
+          } else {
+            player.pauseAt(msg.position || 0);
+            UI.updateProgress(msg.position || 0, currentTrack.duration || 0);
+            UI.stopProgressUpdates();
+          }
+        }
+        UI.renderPlayer(currentTrack, isPlaying, isAdmin);
+        UI.showToast('Stream refreshed');
         break;
 
       case 'queue_updated':
@@ -258,6 +282,14 @@
     if (player) {
       player.onPlayBlocked(function () {
         UI.showToast('Click to start listening');
+      });
+
+      player.onError(function () {
+        if (!currentTrack || !currentTrack.id) return;
+        if (refreshRequestedFor === currentTrack.id) return;
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        refreshRequestedFor = currentTrack.id;
+        send({ type: 'refresh_stream', trackId: currentTrack.id });
       });
     }
 

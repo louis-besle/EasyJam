@@ -1,4 +1,4 @@
-const { describe, it } = require('node:test');
+const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const os = require('os');
 const fs = require('fs');
@@ -10,7 +10,8 @@ process.env.EASYJAM_QUEUE_FILE = TEST_QUEUE_FILE;
 
 const {
   createRoom, addToQueue, removeFromQueue, playTrack, pauseTrack, skipTrack,
-  addUser, removeUser, voteSkip, resetVotes, getCurrentPosition, getFullState
+  addUser, removeUser, voteSkip, resetVotes, getCurrentPosition, getFullState,
+  saveQueue, loadQueue
 } = require('../server/state');
 
 process.on('exit', () => {
@@ -226,5 +227,77 @@ describe('getFullState', () => {
     assert.deepStrictEqual(state.votesSkip, {});
     JSON.parse(JSON.stringify(state));
     assert.ok(true, 'state is serializable');
+  });
+});
+
+describe('addToQueue resolvedAt', () => {
+  it('should stamp resolvedAt with the current time', () => {
+    const room = createRoom();
+    const before = Date.now();
+    const track = addToQueue(room, trackData);
+    const after = Date.now();
+    assert.strictEqual(typeof track.resolvedAt, 'number');
+    assert.ok(track.resolvedAt >= before, 'resolvedAt should not be in the past');
+    assert.ok(track.resolvedAt <= after, 'resolvedAt should be around now');
+  });
+});
+
+describe('queue persistence (saveQueue / loadQueue)', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'easyjam-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should restore the queue and keep the queue file on disk', () => {
+    const file = path.join(tmpDir, 'queue.json');
+
+    const room = createRoom();
+    addToQueue(room, trackData);
+    addToQueue(room, { ...trackData, title: 'Second Song', youtubeId: 'abcdefghijk' });
+    saveQueue(room, file);
+
+    assert.ok(fs.existsSync(file), 'saveQueue should write the file');
+
+    const restored = createRoom();
+    loadQueue(restored, file);
+
+    assert.strictEqual(restored.queue.length, 2);
+    assert.strictEqual(restored.queue[0].title, 'Test Song');
+    assert.strictEqual(restored.queue[1].title, 'Second Song');
+    assert.ok(fs.existsSync(file), 'loadQueue must not delete the queue file');
+
+    // Loading a second time must still work (persistence, not a one-shot import).
+    const again = createRoom();
+    loadQueue(again, file);
+    assert.strictEqual(again.queue.length, 2);
+  });
+
+  it('should normalize legacy entries missing id and resolvedAt', () => {
+    const file = path.join(tmpDir, 'legacy-queue.json');
+    fs.writeFileSync(file, JSON.stringify([{
+      title: 'Legacy Song',
+      artist: 'Legacy Artist',
+      duration: 180,
+      thumbnail: 'http://example.com/legacy.jpg',
+      youtubeId: 'dQw4w9WgXcQ',
+      streamUrl: 'http://example.com/expired-stream',
+      addedBy: 'Alice',
+      addedAt: 1700000000000
+    }]), 'utf8');
+
+    const room = createRoom();
+    loadQueue(room, file);
+
+    assert.strictEqual(room.queue.length, 1);
+    assert.strictEqual(typeof room.queue[0].id, 'string');
+    assert.ok(room.queue[0].id.length > 0, 'a missing id should be generated');
+    assert.strictEqual(room.queue[0].resolvedAt, 0, 'missing resolvedAt should default to 0');
+    assert.strictEqual(room.queue[0].title, 'Legacy Song');
+    assert.ok(fs.existsSync(file), 'loadQueue must not delete the queue file');
   });
 });

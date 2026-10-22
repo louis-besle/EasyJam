@@ -2,7 +2,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const https = require('https');
-const { createRoom, loadQueue, playTrack, saveQueue, getCurrentPosition } = require('./state');
+const { createRoom, loadQueue } = require('./state');
 const { checkYtDlpExists } = require('./ytdlp');
 const { createWSServer, setupWebSocket } = require('./ws-handler');
 
@@ -20,8 +20,7 @@ async function main() {
   loadQueue(room);
 
   if (room.queue.length > 0) {
-    playTrack(room, 0);
-    console.log('Restored ' + room.queue.length + ' tracks in queue, playing "' + (room.current?.track?.title || '?') + '"');
+    console.log('Restored ' + room.queue.length + ' tracks in queue');
   }
 
   const app = express();

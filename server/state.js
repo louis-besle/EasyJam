@@ -20,6 +20,7 @@ function createRoom() {
 }
 
 function addToQueue(room, { title, artist, duration, thumbnail, youtubeId, streamUrl, addedBy }) {
+  const now = Date.now();
   const track = {
     id: uuidv4(),
     title,
@@ -29,7 +30,8 @@ function addToQueue(room, { title, artist, duration, thumbnail, youtubeId, strea
     youtubeId,
     streamUrl,
     addedBy,
-    addedAt: Date.now()
+    addedAt: now,
+    resolvedAt: now
   };
   room.queue.push(track);
   saveQueue(room);
@@ -151,19 +153,26 @@ function addChat(room, socketId, name, text) {
   return msg;
 }
 
-function saveQueue(room) {
+function saveQueue(room, file = QUEUE_FILE) {
   try {
-    fs.writeFileSync(QUEUE_FILE, JSON.stringify(room.queue, null, 2), 'utf8');
+    fs.writeFileSync(file, JSON.stringify(room.queue, null, 2), 'utf8');
   } catch {}
 }
 
-function loadQueue(room) {
+function normalizeQueuedTrack(track) {
+  if (!track || typeof track !== 'object') return track;
+  return {
+    ...track,
+    id: track.id || uuidv4(),
+    resolvedAt: track.resolvedAt || 0
+  };
+}
+
+function loadQueue(room, file = QUEUE_FILE) {
   try {
-    if (fs.existsSync(QUEUE_FILE)) {
-      const data = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
-      if (Array.isArray(data)) room.queue = data;
-      fs.unlinkSync(QUEUE_FILE);
-    }
+    if (!fs.existsSync(file)) return;
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (Array.isArray(data)) room.queue = data.map(normalizeQueuedTrack);
   } catch {}
 }
 
