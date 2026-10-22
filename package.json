@@ -9,6 +9,9 @@
     "type": "git",
     "url": "git+https://github.com/louis-besle/EasyJam.git"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

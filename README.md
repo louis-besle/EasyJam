@@ -15,7 +15,7 @@ EasyJam est un **projet personnel et pédagogique**, sans aucune affiliation ave
 
 ## Prérequis
 
-- [Node.js](https://nodejs.org/) (v18+)
+- [Node.js](https://nodejs.org/) (v20+)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) — extraction des flux YouTube
 
 ```powershell
